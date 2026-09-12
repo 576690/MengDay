@@ -28,6 +28,7 @@ beforeAll(async () => {
       '',
     ),
   );
+  await db.exec(readFileSync('supabase/migrations/002_activity_appearance.sql', 'utf8'));
   await db.query(
     "insert into auth.users(id,encrypted_password,raw_app_meta_data) values($1,'old','{}'),($2,'old','{}'),($3,'old','{\"force_password_change\":true}')",
     [alice, bob, forced],
@@ -80,5 +81,25 @@ describe.sequential('real PostgreSQL migration and policies', () => {
   it('rejects unauthenticated RPC calls', async () => {
     await db.exec("reset role;select set_config('request.jwt.claim.sub','',false);set role anon");
     await expect(commit(uid(), 0, initialData())).rejects.toThrow(/permission/i);
+  });
+  it('upgrades and reruns 002 without losing history, accepts new and solid icons', async () => {
+    await db.exec('reset role');
+    await db.exec(readFileSync('supabase/migrations/002_activity_appearance.sql', 'utf8'));
+    await asUser(alice);
+    const row = (
+      await db.query<{ data: ReturnType<typeof initialData>; revision: number }>(
+        'select data,revision from user_states',
+      )
+    ).rows[0];
+    expect(row.data.entries[0].note).toBe('私密备注');
+    row.data.activities[0].icon = 'None';
+    row.data.activities[1].icon = 'Triangle';
+    row.data.activities[0].color = '#123abc';
+    expect(await commit(uid(), row.revision, row.data)).toMatchObject({
+      conflict: false,
+      revision: row.revision + 1,
+    });
+    row.data.activities[0].icon = 'untrusted-icon';
+    await expect(commit(uid(), row.revision + 1, row.data)).rejects.toThrow('Invalid activity');
   });
 });

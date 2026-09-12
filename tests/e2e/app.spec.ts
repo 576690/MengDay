@@ -45,8 +45,14 @@ test('timer, autosaved notes, name memory, history and offline reload', async ({
     .locator('.bottom-nav:visible,.sidebar nav:visible')
     .getByRole('button', { name: '记录', exact: true })
     .click();
-  await expect(page.locator('.timeline-row')).toHaveCount(2);
-  await expect(page.locator('.timeline')).toContainText('想法已经保存');
+  await expect(page.getByTestId('timeline-block')).toHaveCount(2);
+  await page
+    .getByRole('button', { name: /查看短记录/ })
+    .first()
+    .click();
+  await page.locator('.short-record-list button').first().click();
+  await expect(page.getByRole('textbox', { name: /备注/ })).toHaveValue('整理这一章\n想法已经保存');
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   await page.screenshot({
     path: `test-results/history-${test.info().project.name}.png`,
     fullPage: true,

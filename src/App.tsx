@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import Timeline from './Timeline';
+import { ActivityMenu, DeleteActivityModal } from './activity-actions';
+import { AppearancePicker } from './activity-appearance';
+import { palette, type Appearance } from './appearance';
+import { applyChange, type Change } from './timeline-model';
 import type { User } from '@supabase/supabase-js';
 import {
   Play,
@@ -394,6 +399,8 @@ function Workspace({
     [now, setNow] = useState(Date.now()),
     [date, setDate] = useState(() => dateKey(Date.now(), data.settings.timezone));
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
+  const [deleteModal, setDeleteModal] = useState<Activity | null>(null),
+    [lastChange, setLastChange] = useState<Change | null>(null);
   const [entryModal, setEntryModal] = useState<Entry | 'new' | null>(null),
     [activityModal, setActivityModal] = useState<Activity | null>(null),
     [quick, setQuick] = useState(false),
@@ -496,6 +503,20 @@ function Workspace({
   const act = async (fn: (d: Data) => void) => {
     await flushNote();
     await store.mutate(fn);
+  };
+  const commitChange = async (change: Change) => {
+    await act((d) => applyChange(d, change));
+    setLastChange(change);
+    setMessage(change.label);
+  };
+  const undoChange = () => {
+    if (!lastChange) return;
+    void act((d) => applyChange(d, lastChange, true))
+      .then(() => {
+        setLastChange(null);
+        setMessage('已撤销上次编辑');
+      })
+      .catch(notifyError);
   };
   const toggle = async (name: string, note = '') => {
     if (busy) return;
@@ -827,39 +848,45 @@ function Workspace({
                               .filter((e) => e.activityId === a.id)
                               .sort((a, b) => b.start - a.start)[0];
                           return (
-                            <button
-                              key={a.id}
-                              disabled={busy}
-                              className={`activity-card ${isActive ? 'active' : ''}`}
-                              style={{ '--activity': a.color } as CSSProperties}
-                              onClick={() => void toggle(a.name)}
-                            >
-                              <div className="activity-top">
-                                <ActivityIcon activity={a} />
-                                <span className="activity-play">
-                                  {isActive ? (
-                                    <Square size={13} fill="currentColor" />
-                                  ) : (
-                                    <Play size={13} fill="currentColor" />
-                                  )}
-                                </span>
-                              </div>
-                              <h3>{a.name}</h3>
-                              <p className="activity-note">
-                                {isActive ? note || '正在记录…' : last?.note || a.category}
-                              </p>
-                              <div className="activity-bottom">
-                                <span>{human(ms)}</span>
-                                {isActive ? (
-                                  <span className="recording">
-                                    <i />
-                                    计时中
+                            <div key={a.id} className="activity-card-wrap">
+                              <button
+                                disabled={busy}
+                                className={`activity-card ${isActive ? 'active' : ''}`}
+                                style={{ '--activity': a.color } as CSSProperties}
+                                onClick={() => void toggle(a.name)}
+                              >
+                                <div className="activity-top">
+                                  <ActivityIcon activity={a} />
+                                  <span className="activity-play">
+                                    {isActive ? (
+                                      <Square size={13} fill="currentColor" />
+                                    ) : (
+                                      <Play size={13} fill="currentColor" />
+                                    )}
                                   </span>
-                                ) : (
-                                  <span>今日</span>
-                                )}
-                              </div>
-                            </button>
+                                </div>
+                                <h3>{a.name}</h3>
+                                <p className="activity-note">
+                                  {isActive ? note || '正在记录…' : last?.note || a.category}
+                                </p>
+                                <div className="activity-bottom">
+                                  <span>{human(ms)}</span>
+                                  {isActive ? (
+                                    <span className="recording">
+                                      <i />
+                                      计时中
+                                    </span>
+                                  ) : (
+                                    <span>今日</span>
+                                  )}
+                                </div>
+                              </button>
+                              <ActivityMenu
+                                activity={a}
+                                onEdit={() => setActivityModal(a)}
+                                onDelete={() => setDeleteModal(a)}
+                              />
+                            </div>
                           );
                         })}
                       <button className="add-activity-card" onClick={() => setQuick(true)}>
@@ -1011,26 +1038,24 @@ function Workspace({
                   补记时间
                 </button>
               </div>
-              <div className="history-layout">
-                <section className="panel history-panel">
-                  <div className="section-heading">
-                    <DateNav date={date} setDate={setDate} today={today} />
-                    <span className="muted small">共 {dayEntries(date).length} 段</span>
-                  </div>
-                  <div className="history-summary">
-                    <span>{date === today ? '今天' : date}，你记录了</span>
-                    <strong>
-                      {human(totals(data, [date], now).reduce((s, t) => s + t.ms, 0))}
-                    </strong>
-                  </div>
-                  {renderEntries(dayEntries(date))}
-                </section>
-                <aside className="panel history-side">
-                  <h2>这一天的颜色</h2>
-                  <Distribution data={data} days={[date]} now={now} />
-                  <p className="small muted">点击时间记录，可以修改活动、时间和备注。</p>
-                </aside>
-              </div>
+              <Timeline
+                data={data}
+                now={now}
+                date={date}
+                setDate={setDate}
+                onEdit={(entry) =>
+                  void flushNote()
+                    .then(() =>
+                      setEntryModal(
+                        store.value!.data.entries.find((e) => e.id === entry.id) ?? entry,
+                      ),
+                    )
+                    .catch(notifyError)
+                }
+                onApply={commitChange}
+                canUndo={!!lastChange}
+                onUndo={undoChange}
+              />
             </>
           )}
           {page === 'stats' && (
@@ -1299,7 +1324,7 @@ function Workspace({
                     </button>
                   </section>
                   <p className="app-version">
-                    MengDay 1.0 <span>·</span> Made for your everyday.
+                    MengDay 1.1 <span>·</span> Made for your everyday.
                   </p>
                 </div>
               </div>
@@ -1330,13 +1355,18 @@ function Workspace({
         <QuickForm
           data={data}
           onClose={() => setQuick(false)}
-          onStart={async (name, note) => {
-            await act((d) => toggleTimer(d, name, Date.now(), note, 'start'));
+          onStart={async (name, note, appearance) => {
+            await act((d) => {
+              const a = ensureActivity(d, name);
+              if (appearance) Object.assign(a, appearance);
+              toggleTimer(d, name, Date.now(), note, 'start');
+            });
             setQuick(false);
           }}
-          onCreate={async (name) => {
+          onCreate={async (name, appearance) => {
             await act((d) => {
-              ensureActivity(d, name);
+              const a = ensureActivity(d, name);
+              if (appearance) Object.assign(a, appearance);
             });
             setQuick(false);
             setMessage('活动已保存，之后可直接选择');
@@ -1355,6 +1385,10 @@ function Workspace({
       {activityModal && (
         <ActivityForm
           activity={activityModal}
+          onDelete={() => {
+            setActivityModal(null);
+            setDeleteModal(activityModal);
+          }}
           onClose={() => setActivityModal(null)}
           onSave={async (a) => {
             await act((d) => {
@@ -1362,6 +1396,14 @@ function Workspace({
               d.activities[i] = a;
             });
           }}
+        />
+      )}
+      {deleteModal && (
+        <DeleteActivityModal
+          activity={deleteModal}
+          data={data}
+          onClose={() => setDeleteModal(null)}
+          onApply={commitChange}
         />
       )}
       {passwordModal && (
@@ -1467,6 +1509,7 @@ function Workspace({
       {message && (
         <div className="toast" role="status">
           <span>{message}</span>
+          {lastChange && message === lastChange.label && <button onClick={undoChange}>撤销</button>}
           {undo && message === '记录已删除' && (
             <button
               onClick={() => {
@@ -1740,18 +1783,19 @@ function QuickForm({
 }: {
   data: Data;
   onClose: () => void;
-  onStart: (name: string, note: string) => Promise<void>;
-  onCreate: (name: string) => Promise<void>;
+  onStart: (name: string, note: string, appearance?: Appearance) => Promise<void>;
+  onCreate: (name: string, appearance?: Appearance) => Promise<void>;
 }) {
   const [name, setName] = useState(''),
     [note, setNote] = useState(''),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
+  const [appearance, setAppearance] = useState<Appearance>();
   const run = async (start: boolean) => {
     setBusy(true);
     try {
-      if (start) await onStart(name, note);
-      else await onCreate(name);
+      if (start) await onStart(name, note, appearance);
+      else await onCreate(name, appearance);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -1772,8 +1816,27 @@ function QuickForm({
       >
         <label>
           活动名称
-          <NameInput data={data} value={name} onChange={setName} />
+          <NameInput
+            data={data}
+            value={name}
+            onChange={(name) => {
+              setName(name);
+              setAppearance(undefined);
+            }}
+          />
         </label>
+        <details className="appearance-details">
+          <summary>颜色与图案</summary>
+          <AppearancePicker
+            value={
+              appearance ??
+              data.activities.find(
+                (a) => a.name.trim().toLowerCase() === name.trim().toLowerCase(),
+              ) ?? { color: palette[data.activities.length % palette.length], icon: 'Pencil' }
+            }
+            onChange={setAppearance}
+          />
+        </details>
         <label>
           备注 <span className="muted">可选 · 仅用于这次记录</span>
           <textarea

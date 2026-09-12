@@ -1,27 +1,9 @@
-import { useState, type ReactNode, type CSSProperties } from 'react';
+import { useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import {
-  BriefcaseBusiness,
-  BookOpen,
-  Dumbbell,
-  Coffee,
-  Headphones,
-  Moon,
-  Code2,
-  Heart,
-  Pencil,
-  Bike,
-  Leaf,
-  Music,
-  X,
-  Check,
-  Plus,
-  Search,
-} from 'lucide-react';
+import { X, Check, Plus, Search, Leaf } from 'lucide-react';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import {
   colors,
-  icons,
   suggest,
   uid,
   ensureActivity,
@@ -30,34 +12,9 @@ import {
   type Data,
   type Entry,
 } from './model';
-const iconMap = {
-  BriefcaseBusiness,
-  BookOpen,
-  Dumbbell,
-  Coffee,
-  Headphones,
-  Moon,
-  Code2,
-  Heart,
-  Pencil,
-  Bike,
-  Leaf,
-  Music,
-};
-export function ActivityIcon({
-  activity,
-  size = 22,
-}: {
-  activity: Pick<Activity, 'icon' | 'color'>;
-  size?: number;
-}) {
-  const Icon = iconMap[activity.icon as keyof typeof iconMap] ?? Pencil;
-  return (
-    <span className="activity-icon" style={{ '--activity': activity.color } as CSSProperties}>
-      <Icon size={size} />
-    </span>
-  );
-}
+import { ActivityIcon, AppearancePicker } from './activity-appearance';
+import { type Appearance } from './appearance';
+export { ActivityIcon };
 export function Modal({
   title,
   description,
@@ -189,12 +146,16 @@ export function EntryForm({
   onSave,
   onClose,
   onDelete,
+  initialRange,
+  onSaved,
 }: {
   data: Data;
   entry?: Entry;
   onSave: (fn: (d: Data) => void) => Promise<void>;
   onClose: () => void;
   onDelete?: (id: string) => void;
+  initialRange?: { start: number; end: number };
+  onSaved?: () => void;
 }) {
   const tz = data.settings.timezone;
   const local = (n: number) => formatInTimeZone(n, tz, "yyyy-MM-dd'T'HH:mm:ss");
@@ -202,8 +163,11 @@ export function EntryForm({
     entry ? (data.activities.find((a) => a.id === entry.activityId)?.name ?? '') : '',
   );
   const [note, setNote] = useState(entry?.note ?? '');
-  const [start, setStart] = useState(local(entry?.start ?? Date.now() - 1800000));
-  const [end, setEnd] = useState(local(entry?.end ?? Date.now()));
+  const [start, setStart] = useState(
+    local(entry?.start ?? initialRange?.start ?? Date.now() - 1800000),
+  );
+  const [end, setEnd] = useState(local(entry?.end ?? initialRange?.end ?? Date.now()));
+  const [appearance, setAppearance] = useState<Appearance>();
   const [running, setRunning] = useState(entry?.end === null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -220,14 +184,25 @@ export function EntryForm({
           try {
             await onSave((d) => {
               const a = ensureActivity(d, name);
+              if (appearance) Object.assign(a, appearance);
               saveEntry(d, {
                 id: entry?.id ?? uid(),
                 activityId: a.id,
-                start: fromZonedTime(start, tz).getTime(),
-                end: running ? null : fromZonedTime(end, tz).getTime(),
+                start:
+                  (entry?.start ?? initialRange?.start) !== undefined &&
+                  start === local((entry?.start ?? initialRange?.start)!)
+                    ? (entry?.start ?? initialRange?.start)!
+                    : fromZonedTime(start, tz).getTime(),
+                end: running
+                  ? null
+                  : (entry?.end ?? initialRange?.end) !== undefined &&
+                      end === local((entry?.end ?? initialRange?.end)!)
+                    ? (entry?.end ?? initialRange?.end)!
+                    : fromZonedTime(end, tz).getTime(),
                 note,
               });
             });
+            onSaved?.();
             onClose();
           } catch (e) {
             setError((e as Error).message);
@@ -238,8 +213,27 @@ export function EntryForm({
       >
         <label>
           活动名称
-          <NameInput data={data} value={name} onChange={setName} />
+          <NameInput
+            data={data}
+            value={name}
+            onChange={(name) => {
+              setName(name);
+              setAppearance(undefined);
+            }}
+          />
         </label>
+        <details className="appearance-details">
+          <summary>颜色与图案</summary>
+          <AppearancePicker
+            value={
+              appearance ??
+              data.activities.find(
+                (a) => a.name.trim().toLowerCase() === name.trim().toLowerCase(),
+              ) ?? { color: colors[data.activities.length % colors.length], icon: 'Pencil' }
+            }
+            onChange={setAppearance}
+          />
+        </details>
         <label>
           备注 <span className="muted">可选</span>
           <textarea
@@ -315,10 +309,12 @@ export function ActivityForm({
   activity,
   onSave,
   onClose,
+  onDelete,
 }: {
   activity: Activity;
   onSave: (a: Activity) => Promise<void>;
   onClose: () => void;
+  onDelete?: () => void;
 }) {
   const [a, setA] = useState({ ...activity });
   const [error, setError] = useState('');
@@ -352,34 +348,7 @@ export function ActivityForm({
             onChange={(e) => setA({ ...a, category: e.target.value })}
           />
         </label>
-        <label>图标</label>
-        <div className="icon-picker">
-          {icons.map((icon) => (
-            <button
-              type="button"
-              aria-label={icon}
-              className={a.icon === icon ? 'selected' : ''}
-              key={icon}
-              onClick={() => setA({ ...a, icon })}
-            >
-              <ActivityIcon activity={{ icon, color: a.color }} />
-            </button>
-          ))}
-        </div>
-        <label>颜色</label>
-        <div className="color-picker">
-          {colors.map((color) => (
-            <button
-              type="button"
-              key={color}
-              aria-label={`颜色 ${color}`}
-              style={{ background: color }}
-              onClick={() => setA({ ...a, color })}
-            >
-              {a.color === color && <Check size={18} />}
-            </button>
-          ))}
-        </div>
+        <AppearancePicker value={a} onChange={(value) => setA({ ...a, ...value })} />
         <div className="form-row">
           <label>
             目标时长（分钟）
@@ -409,6 +378,11 @@ export function ActivityForm({
           </p>
         )}
         <div className="modal-actions">
+          {onDelete && (
+            <button type="button" className="button danger" onClick={onDelete}>
+              删除活动
+            </button>
+          )}
           <button type="submit" className="button primary">
             保存活动
           </button>

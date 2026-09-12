@@ -1,4 +1,5 @@
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { palette, iconNames } from './appearance';
 import {
   addDays,
   addMonths,
@@ -30,30 +31,8 @@ export type Entry = {
 };
 export type Settings = { theme: 'light' | 'dark' | 'system'; timezone: string };
 export type Data = { activities: Activity[]; entries: Entry[]; settings: Settings };
-export const colors = [
-  '#6375ed',
-  '#e49a55',
-  '#5aa989',
-  '#bd87c6',
-  '#df788a',
-  '#7298bc',
-  '#9b95a9',
-  '#c5a34d',
-];
-export const icons = [
-  'BriefcaseBusiness',
-  'BookOpen',
-  'Dumbbell',
-  'Coffee',
-  'Headphones',
-  'Moon',
-  'Code2',
-  'Heart',
-  'Pencil',
-  'Bike',
-  'Leaf',
-  'Music',
-];
+export const colors = palette;
+export const icons = iconNames;
 export const uid = () => crypto.randomUUID();
 export const normalize = (s: string) => s.trim().toLowerCase();
 export function initialData(): Data {
