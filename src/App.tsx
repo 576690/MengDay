@@ -867,7 +867,12 @@ function Workspace({
                                 </div>
                                 <h3>{a.name}</h3>
                                 <p className="activity-note">
-                                  {isActive ? note || '正在记录…' : last?.note || a.category}
+                                  {isActive
+                                    ? note || '正在记录…'
+                                    : last?.end != null &&
+                                        dateKey(last.end, data.settings.timezone) === today
+                                      ? last.note || a.category
+                                      : a.category}
                                 </p>
                                 <div className="activity-bottom">
                                   <span>{human(ms)}</span>
