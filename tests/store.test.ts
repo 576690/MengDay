@@ -152,7 +152,7 @@ it('isolates local cache by identity and serializes two tabs', async () => {
   await Promise.all([a.init(), b.init(), other.init()]);
   await Promise.all([
     a.mutate((d) => toggleTimer(d, '工作', 1000)),
-    b.mutate((d) => toggleTimer(d, '学习', 2000)),
+    b.mutate((d) => toggleTimer(d, '学习', 62000)),
   ]);
   await a.reload();
   expect(a.value!.data.entries).toHaveLength(2);

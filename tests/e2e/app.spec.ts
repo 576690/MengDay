@@ -23,6 +23,7 @@ test('timer, autosaved notes, name memory, history and offline reload', async ({
     '整理这一章\n想法已经保存',
   );
   await context.setOffline(true);
+  await page.clock.setFixedTime(new Date(Date.now() + 120000));
   await page.getByRole('button', { name: '结束这段记录' }).click();
   await page.getByRole('button', { name: '开始记录', exact: true }).click();
   await page.getByRole('textbox', { name: '活动名称', exact: true }).fill('深度');
@@ -40,6 +41,7 @@ test('timer, autosaved notes, name memory, history and offline reload', async ({
   await context.setOffline(false);
   await page.reload();
   await expect(page.locator('.timer-center h2')).toHaveText('深度写作');
+  await page.clock.setFixedTime(new Date(Date.now() + 240000));
   await page.getByRole('button', { name: '结束这段记录' }).click();
   await page
     .locator('.bottom-nav:visible,.sidebar nav:visible')

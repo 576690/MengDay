@@ -22,6 +22,7 @@ test('installed worker serves production app and persisted timer while offline',
   await expect(page.getByRole('textbox', { name: '当前活动备注' })).toHaveValue(
     '断网也能读完这一章',
   );
+  await page.clock.setFixedTime(new Date(Date.now() + 120000));
   await page.getByRole('button', { name: '结束这段记录' }).click();
   await context.setOffline(false);
   await page.reload();

@@ -58,6 +58,7 @@ import {
   mergeData,
   ensureActivity,
   toggleTimer,
+  categoryTotals,
   clockText,
   dateKey,
   dayBounds,
@@ -430,7 +431,14 @@ function Workspace({
     todayMs = todayTotals.reduce((s, t) => s + t.ms, 0);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    const refresh = () => {
+      if (!document.hidden) setNow(Date.now());
+    };
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, []);
   useEffect(() => {
     const system = matchMedia('(prefers-color-scheme: dark)');
@@ -522,7 +530,11 @@ function Workspace({
     if (busy) return;
     setBusy(true);
     try {
-      await act((d) => toggleTimer(d, name, Date.now(), note));
+      let discarded = false;
+      await act((d) => {
+        discarded = toggleTimer(d, name, Date.now(), note).discarded;
+      });
+      if (discarded) setMessage('已忽略不足一分钟的计时');
     } catch (e) {
       notifyError(e);
     } finally {
@@ -1238,7 +1250,7 @@ function Workspace({
                       </select>
                     </label>
                     <button
-                      className="settings-link"
+                      className="settings-link install-link"
                       onClick={() => {
                         if (installEvent) void installEvent.prompt();
                         else setInstallHelp(true);
@@ -1361,12 +1373,14 @@ function Workspace({
           data={data}
           onClose={() => setQuick(false)}
           onStart={async (name, note, appearance) => {
+            let discarded = false;
             await act((d) => {
               const a = ensureActivity(d, name);
               if (appearance) Object.assign(a, appearance);
-              toggleTimer(d, name, Date.now(), note, 'start');
+              discarded = toggleTimer(d, name, Date.now(), note, 'start').discarded;
             });
             setQuick(false);
+            if (discarded) setMessage('已忽略不足一分钟的计时');
           }}
           onCreate={async (name, appearance) => {
             await act((d) => {
@@ -1587,8 +1601,25 @@ function DateNav({
     </div>
   );
 }
-function Distribution({ data, days, now }: { data: Data; days: string[]; now: number }) {
-  const list = totals(data, days, now)
+function Distribution({
+  data,
+  days,
+  now,
+  grouping = 'activity',
+}: {
+  data: Data;
+  days: string[];
+  now: number;
+  grouping?: 'activity' | 'category';
+}) {
+  const list = (
+      grouping === 'category'
+        ? categoryTotals(data, days, now).map((g) => ({
+            ms: g.ms,
+            activity: { id: g.name, name: g.name, color: g.color },
+          }))
+        : totals(data, days, now)
+    )
       .filter((t) => t.ms > 0)
       .sort((a, b) => b.ms - a.ms),
     total = list.reduce((s, t) => s + t.ms, 0);
@@ -1650,6 +1681,7 @@ function Stats({
   period: 'day' | 'week' | 'month';
   now: number;
 }) {
+  const [grouping, setGrouping] = useState<'activity' | 'category'>('activity');
   const days = rangeDays(date, period),
     list = totals(data, days, now),
     total = list.reduce((s, t) => s + t.ms, 0),
@@ -1666,6 +1698,14 @@ function Stats({
   return (
     <>
       <div className="stats-toolbar">
+        <div className="stats-grouping" role="group" aria-label="统计分组">
+          <button aria-pressed={grouping === 'activity'} onClick={() => setGrouping('activity')}>
+            按活动
+          </button>
+          <button aria-pressed={grouping === 'category'} onClick={() => setGrouping('category')}>
+            按分类
+          </button>
+        </div>
         <DateNav
           date={date}
           setDate={setDate}
@@ -1746,15 +1786,41 @@ function Stats({
         </section>
         <section className="panel">
           <h2>时间都去哪了</h2>
-          <Distribution data={data} days={days} now={now} />
+          <Distribution data={data} days={days} now={now} grouping={grouping} />
         </section>
       </div>
       <section className="panel activity-report">
         <div className="section-heading">
-          <h2>活动明细</h2>
+          <h2>{grouping === 'category' ? '分类明细' : '活动明细'}</h2>
           <span className="muted small">按投入时长排序</span>
         </div>
-        {list.filter((t) => t.ms > 0).length ? (
+        {grouping === 'category' ? (
+          categoryTotals(data, days, now).length ? (
+            categoryTotals(data, days, now).map((g) => (
+              <details className="category-report" key={g.name}>
+                <summary>
+                  <i style={{ background: g.color }} />
+                  <strong>{g.name}</strong>
+                  <span>
+                    {human(g.ms)} · {Math.round((g.ms / total) * 100)}%
+                  </span>
+                </summary>
+                {g.activities.map((t) => (
+                  <div className="report-row" key={t.activity.id}>
+                    <ActivityIcon activity={t.activity} />
+                    <span>
+                      <strong>{t.activity.name}</strong>
+                    </span>
+                    <strong>{human(t.ms)}</strong>
+                    <small>{Math.round((t.ms / g.ms) * 100)}% 本类</small>
+                  </div>
+                ))}
+              </details>
+            ))
+          ) : (
+            <Empty>开始记录后，看看各类活动的时间分布。</Empty>
+          )
+        ) : list.filter((t) => t.ms > 0).length ? (
           list
             .filter((t) => t.ms > 0)
             .sort((a, b) => b.ms - a.ms)

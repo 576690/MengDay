@@ -95,13 +95,15 @@ export function toggleTimer(
     running = data.entries.find((e) => e.end === null);
   if (running) {
     if (now <= running.start) throw Error('结束时间必须晚于开始时间');
-    running.end = now;
+    if (now - running.start < 60000) data.entries = data.entries.filter((e) => e.id !== running.id);
+    else running.end = now;
   }
   if (mode === 'start' || running?.activityId !== a.id) {
     data.entries.push({ id: uid(), activityId: a.id, start: now, end: null, note });
     a.lastUsed = now;
   }
   validateData(data);
+  return { discarded: !!running && now - running.start < 60000 };
 }
 export function saveEntry(data: Data, entry: Entry) {
   const i = data.entries.findIndex((e) => e.id === entry.id);
@@ -294,4 +296,25 @@ export function csv(data: Data) {
       .map((row) => row.map(cell).join(','))
       .join('\r\n')
   );
+}
+
+export function categoryTotals(data: Data, days: string[], now: number) {
+  const groups = new Map<
+    string,
+    { name: string; color: string; ms: number; activities: ReturnType<typeof totals> }
+  >();
+  for (const item of totals(data, days, now).filter((t) => t.ms > 0)) {
+    const name = item.activity.category.trim() || '其他';
+    let group = groups.get(name);
+    if (!group) {
+      const hash = Array.from(name).reduce((h, c) => (h * 31 + c.codePointAt(0)!) >>> 0, 0);
+      group = { name, color: colors[hash % colors.length], ms: 0, activities: [] };
+      groups.set(name, group);
+    }
+    group.ms += item.ms;
+    group.activities.push(item);
+  }
+  return [...groups.values()]
+    .sort((a, b) => b.ms - a.ms || a.name.localeCompare(b.name))
+    .map((g) => ({ ...g, activities: g.activities.sort((a, b) => b.ms - a.ms) }));
 }

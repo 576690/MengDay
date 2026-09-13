@@ -20,33 +20,39 @@ describe('single timer and notes', () => {
   it('explicit start creates a fresh segment even for the same activity', () => {
     const d = initialData();
     toggleTimer(d, '工作', 1000, '第一段');
-    toggleTimer(d, '工作', 2000, '第二段', 'start');
+    toggleTimer(d, '工作', 62000, '第二段', 'start');
     expect(d.entries).toHaveLength(2);
-    expect(d.entries[0].end).toBe(2000);
+    expect(d.entries[0].end).toBe(62000);
     expect(d.entries[1].note).toBe('第二段');
   });
   it('switches atomically and never inherits notes', () => {
     const d = initialData();
     toggleTimer(d, '工作', 1000, '写方案\n下一步：采访');
-    toggleTimer(d, '学习', 5000);
-    expect(d.entries[0]).toMatchObject({ start: 1000, end: 5000, note: '写方案\n下一步：采访' });
-    expect(d.entries[1]).toMatchObject({ start: 5000, end: null, note: '' });
-    toggleTimer(d, '学习', 10000);
+    toggleTimer(d, '学习', 65000);
+    expect(d.entries[0]).toMatchObject({ start: 1000, end: 65000, note: '写方案\n下一步：采访' });
+    expect(d.entries[1]).toMatchObject({ start: 65000, end: null, note: '' });
+    toggleTimer(d, '学习', 130000);
     expect(d.entries.every((e) => e.end !== null)).toBe(true);
-    toggleTimer(d, '工作', 11000);
+    toggleTimer(d, '工作', 131000);
     expect(d.entries[2].note).toBe('');
   });
   it('rejects overlapping edits, duplicate IDs and multiple running timers', () => {
     const d = initialData();
     toggleTimer(d, '工作', 1000);
-    toggleTimer(d, '工作', 5000);
+    toggleTimer(d, '工作', 65000);
     expect(() =>
-      saveEntry(d, { id: uid(), activityId: d.activities[0].id, start: 4000, end: 9000, note: '' }),
+      saveEntry(d, {
+        id: uid(),
+        activityId: d.activities[0].id,
+        start: 64000,
+        end: 69000,
+        note: '',
+      }),
     ).toThrow('重叠');
     const other = initialData();
     other.entries = [
       { id: uid(), activityId: other.activities[0].id, start: 1000, end: null, note: '' },
-      { id: uid(), activityId: other.activities[1].id, start: 2000, end: null, note: '' },
+      { id: uid(), activityId: other.activities[1].id, start: 62000, end: null, note: '' },
     ];
     expect(() => validateData(other)).toThrow('只能');
   });
@@ -148,7 +154,7 @@ describe('backup validation and merge', () => {
   it('requires a preference for same-ID content, prevents overlap', () => {
     const a = initialData();
     toggleTimer(a, '工作', 1000, 'A');
-    toggleTimer(a, '工作', 2000);
+    toggleTimer(a, '工作', 62000);
     const b = structuredClone(a);
     b.entries[0].note = 'B';
     expect(mergeData(a, b, 'local').entries[0].note).toBe('A');
