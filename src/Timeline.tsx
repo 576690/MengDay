@@ -48,6 +48,8 @@ type Props = {
   now: number;
   date: string;
   setDate: (day: string) => void;
+  period: 'day' | 'week' | 'month';
+  setPeriod: (period: 'day' | 'week' | 'month') => void;
   onEdit: (entry: Entry) => void;
   onApply: (change: Change) => Promise<void>;
   canUndo: boolean;
@@ -71,13 +73,14 @@ export default function Timeline({
   now,
   date,
   setDate,
+  period,
+  setPeriod,
   onEdit,
   onApply,
   canUndo,
   onUndo,
 }: Props) {
-  const [period, setPeriod] = useState<'day' | 'week' | 'month'>('day'),
-    [scale, setScale] = useState(64),
+  const [scale, setScale] = useState(64),
     [editing, setEditing] = useState(false),
     [snap, setSnap] = useState(true),
     [gap, setGap] = useState<Gap | null>(null),

@@ -59,6 +59,7 @@ import {
   ensureActivity,
   toggleTimer,
   categoryTotals,
+  manualRange,
   clockText,
   dateKey,
   dayBounds,
@@ -400,6 +401,8 @@ function Workspace({
     [now, setNow] = useState(Date.now()),
     [date, setDate] = useState(() => dateKey(Date.now(), data.settings.timezone));
   const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
+  const [recordPeriod, setRecordPeriod] = useState<'day' | 'week' | 'month'>('week');
+  const [entryRange, setEntryRange] = useState<{ start: number; end: number }>();
   const [deleteModal, setDeleteModal] = useState<Activity | null>(null),
     [lastChange, setLastChange] = useState<Change | null>(null);
   const [entryModal, setEntryModal] = useState<Entry | 'new' | null>(null),
@@ -567,6 +570,7 @@ function Workspace({
   const nav = (p: Page) => {
     void flushNote().catch(notifyError);
     setPage(p);
+    if (p === 'history') setRecordPeriod('week');
     if (p === 'history' || p === 'stats') setDate(today);
     window.scrollTo({ top: 0 });
   };
@@ -1050,12 +1054,24 @@ function Workspace({
                   <h1>时间有迹可循</h1>
                   <p className="muted">那些投入过的时刻，都在这里。</p>
                 </div>
-                <button className="button primary" onClick={() => setEntryModal('new')}>
+                <button
+                  className="button primary"
+                  onClick={() => {
+                    setEntryRange(
+                      recordPeriod === 'day'
+                        ? manualRange(date, data.settings.timezone)
+                        : undefined,
+                    );
+                    setEntryModal('new');
+                  }}
+                >
                   <Plus size={17} />
                   补记时间
                 </button>
               </div>
               <Timeline
+                period={recordPeriod}
+                setPeriod={setRecordPeriod}
                 data={data}
                 now={now}
                 date={date}
@@ -1396,6 +1412,7 @@ function Workspace({
         <EntryForm
           data={data}
           entry={entryModal === 'new' ? undefined : entryModal}
+          initialRange={entryModal === 'new' && page === 'history' ? entryRange : undefined}
           onSave={act}
           onClose={() => setEntryModal(null)}
           onDelete={remove}

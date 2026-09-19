@@ -124,6 +124,15 @@ export function dayBounds(day: string, tz: string): [number, number] {
     fromZonedTime(`${shiftDate(day, 1)}T00:00:00`, tz).getTime(),
   ];
 }
+export function manualRange(day: string, tz: string, now = Date.now()) {
+  const [first, next] = dayBounds(day, tz);
+  const clock = formatInTimeZone(now, tz, 'HH:mm:ss');
+  const end = Math.min(
+    next - 1000,
+    Math.max(first + 1000, fromZonedTime(`${day}T${clock}`, tz).getTime()),
+  );
+  return { start: Math.max(first, end - 1800000), end };
+}
 export function rangeDays(day: string, period: 'day' | 'week' | 'month') {
   const p = parseISO(day),
     first =

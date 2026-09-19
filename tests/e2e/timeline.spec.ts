@@ -28,6 +28,7 @@ async function nav(page: Page, name: string) {
     .locator('.bottom-nav:visible,.sidebar nav:visible')
     .getByRole('button', { name, exact: true })
     .click();
+  if (name === '记录') await page.getByRole('button', { name: '日', exact: true }).click();
 }
 async function seed(page: Page) {
   const d = records();
