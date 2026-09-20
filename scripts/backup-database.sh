@@ -39,6 +39,12 @@ quiet() {
 
 quiet 'Database connection' psql --dbname "$SUPABASE_DB_URL" -X -v ON_ERROR_STOP=1 -c 'select 1'
 quiet 'Roles backup' supabase db dump --db-url "$SUPABASE_DB_URL" --role-only -f "$work/plain/roles.sql"
+# pg_dumpall includes this platform-owned PG17 parameter grant, but a fresh
+# Supabase project's postgres role cannot re-grant it. Preserve the original
+# and omit only this exact managed grant from the portable restore file.
+cp "$work/plain/roles.sql" "$work/plain/roles-original.sql"
+sed 's/^GRANT SET ON PARAMETER "log_min_messages" TO "supabase_realtime_admin";$/-- Platform-managed log_min_messages grant: see roles-original.sql./' \
+  "$work/plain/roles-original.sql" > "$work/plain/roles.sql"
 quiet 'Schema backup' supabase db dump --db-url "$SUPABASE_DB_URL" -f "$work/plain/schema.sql"
 quiet 'Data backup' supabase db dump --db-url "$SUPABASE_DB_URL" --data-only --use-copy -x 'storage.buckets_vectors' -x 'storage.vector_indexes' -f "$work/plain/data.sql"
 
@@ -63,7 +69,9 @@ if [[ "${RESTORE_DRILL:-false}" == true ]]; then
 fi
 printf 'MengDay logical database backup\nUTC: %s\nAutomation commit: %s\nSupabase CLI: %s\n' \
   "$(date -u +%FT%TZ)" "${GITHUB_SHA:-unknown}" "$(supabase --version)" > "$work/plain/manifest.txt"
-(cd "$work/plain" && sha256sum roles.sql schema.sql data.sql auth-triggers.sql migrations/*.sql > SHA256SUMS)
+printf 'Restore environment Auth: %s\n' "${RESTORE_AUTH_VERSION:-v2.197.0}" >> "$work/plain/manifest.txt"
+printf 'Restore environment Storage: %s\n' "${RESTORE_STORAGE_VERSION:-v1.77.5}" >> "$work/plain/manifest.txt"
+(cd "$work/plain" && sha256sum roles.sql roles-original.sql schema.sql data.sql auth-triggers.sql migrations/*.sql > SHA256SUMS)
 tar -czf "$work/backup.tar.gz" -C "$work/plain" .
 
 archive="mengday-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}.tar.gz.age"

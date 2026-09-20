@@ -8,10 +8,13 @@ GitHub 定时执行可能延迟；以最近一次成功运行及其附件为准�
 恢复这次导出的 SQL，核对四张核心表行数、RLS/权限和密码变更触发器。
 演练不会写入源数据库，也不需要上传解密私钥。日常定时备份默认不启动完整测试环境。
 这个演练验证数据库恢复；切换生产前仍需在测试版应用中验证登录和跨设备同步。
+演练的 Auth 镜像固定为 `v2.197.0`、Storage 镜像为 `v1.77.5`，与首次验收时线上项目一致；CLI 默认镜像较旧，缺少新版账号表。
+以后 Supabase 升级 Auth/Storage 并新增表时，需要同步更新演练脚本的版本再验收。
 
 ## 内容与保护
 
 - 使用固定版本 Supabase CLI 导出角色、数据库结构、数据（包括 Auth 账号）。
+- `roles-original.sql` 保留原始角色导出；用于恢复的 `roles.sql` 仅移除一条 Supabase 管理的 `log_min_messages → supabase_realtime_admin` 参数授权。新项目的普通管理员不能重新授予它，平台自行管理这项权限。
 - 单独导出 `auth.users` 上的 `mengday_password_changed` 触发器，附带应用 SQL 迁移文件。
 - 数据导出是一个 pg_dump 事务快照；结构和角色单独导出，备份期间应避免部署数据库迁移。
 - 上传前用 age 公钥加密；解密私钥不存入 GitHub Secrets，也不上传到 GitHub。
@@ -81,6 +84,7 @@ psql --dbname "$PGDATABASE" -X --single-transaction --set ON_ERROR_STOP=1 \
 ```
 
 恢复默认角色、扩展或受管 schema 时可能遇到版本/权限差异，按下方 Supabase 官方恢复文档处理；不要忽略 SQL 错误继续上线。
+若使用兼容性修复前生成的旧备份，`roles.sql` 可能仍含 `GRANT SET ON PARAMETER "log_min_messages" TO "supabase_realtime_admin";`；恢复前仅删除这一条平台管理的授权。
 如果原来的 CLI 迁移历史也需要恢复，应另行导出 `supabase_migrations`；本方案附带迁移源文件，未宣称保存 CLI 内部历史。
 当前项目自定义 Auth 对象是上述触发器；未来增加其他 Auth/Storage 触发器或策略时，也需要扩展备份脚本。
 

@@ -24,6 +24,15 @@ unset SUPABASE_DB_URL PGDATABASE PGHOST PGPORT PGUSER PGPASSWORD
 export PGSSLMODE=disable PGCONNECT_TIMEOUT=30
 cd "$drill"
 supabase init >/dev/null 2>&1
+# Match the hosted Auth schema. CLI 2.117.0 bundles GoTrue 2.196.0, which lacks
+# the 2.197.0 recovery-code tables already present in this project's backups.
+auth_version="${RESTORE_AUTH_VERSION:-v2.197.0}"
+storage_version="${RESTORE_STORAGE_VERSION:-v1.77.5}"
+[[ "$auth_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid restore Auth version'; exit 1; }
+[[ "$storage_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid restore Storage version'; exit 1; }
+mkdir -p supabase/.temp
+printf '%s' "$auth_version" > supabase/.temp/gotrue-version
+printf '%s' "$storage_version" > supabase/.temp/storage-version
 if ! supabase start > "$drill/start.log" 2>&1; then
   echo '::error::Disposable Supabase restore environment could not start.'
   exit 1

@@ -34,6 +34,9 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 case "$output" in
+  */roles.sql)
+    printf 'ALTER ROLE "anon" SET "statement_timeout" TO '\''3s'\'';\nGRANT SET ON PARAMETER "log_min_messages" TO "supabase_realtime_admin";\n' > "$output"
+    ;;
   */data.sql)
     printf 'COPY "auth"."users" (id) FROM stdin;\n\\.\nCOPY "auth"."identities" (id) FROM stdin;\n\\.\nCOPY "public"."user_states" (user_id) FROM stdin;\n\\.\nCOPY "public"."sync_operations" (user_id) FROM stdin;\n\\.\n' > "$output"
     if [[ "${MISSING_AUTH:-}" == 1 ]]; then echo '-- incomplete dump' > "$output"; fi
@@ -54,6 +57,11 @@ tar -xzf "$test_dir/backup.tar.gz" -C "$test_dir/restored"
 (cd "$test_dir/restored" && sha256sum --check SHA256SUMS)
 test -s "$test_dir/restored/auth-triggers.sql"
 test -s "$test_dir/restored/manifest.txt"
+grep -q '^GRANT SET ON PARAMETER' "$test_dir/restored/roles-original.sql"
+if grep -q '^GRANT SET ON PARAMETER' "$test_dir/restored/roles.sql"; then
+  echo 'FAIL: platform-only grant included in portable roles'; exit 1
+fi
+grep -q '^ALTER ROLE "anon"' "$test_dir/restored/roles.sql"
 test -z "$(find "$RUNNER_TEMP" -maxdepth 1 -name 'mengday-backup.*' -print -quit)"
 
 # A modified ciphertext must not authenticate.
