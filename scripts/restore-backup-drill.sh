@@ -40,6 +40,7 @@ fi
 export PGDATABASE='postgresql://postgres:postgres@127.0.0.1:54322/postgres'
 if ! psql --dbname "$PGDATABASE" -X --single-transaction --set ON_ERROR_STOP=1 \
   --file "$backup_dir/roles.sql" \
+  --file "$backup_dir/restore-prelude.sql" \
   --file "$backup_dir/schema.sql" \
   --command 'SET session_replication_role = replica' \
   --file "$backup_dir/data.sql" \

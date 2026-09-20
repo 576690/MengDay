@@ -16,6 +16,7 @@ GitHub 定时执行可能延迟；以最近一次成功运行及其附件为准�
 - 使用固定版本 Supabase CLI 导出角色、数据库结构、数据（包括 Auth 账号）。
 - `roles-original.sql` 保留原始角色导出；用于恢复的 `roles.sql` 仅移除一条 Supabase 管理的 `log_min_messages → supabase_realtime_admin` 参数授权。新项目的普通管理员不能重新授予它，平台自行管理这项权限。
 - 单独导出 `auth.users` 上的 `mengday_password_changed` 触发器，附带应用 SQL 迁移文件。
+- 附带 `restore-prelude.sql`，在恢复建表前清除目标项目的宽泛默认授权，再由 schema.sql 恢复源项目权限，避免恢复后 API 角色获得额外权限。
 - 数据导出是一个 pg_dump 事务快照；结构和角色单独导出，备份期间应避免部署数据库迁移。
 - 上传前用 age 公钥加密；解密私钥不存入 GitHub Secrets，也不上传到 GitHub。
 - 加密附件保留 30 天；备份未写入 Git 历史。私有 Actions 存储和运行分钟受账户额度约束。
@@ -77,6 +78,7 @@ sha256sum --check SHA256SUMS
 ```bash
 psql --dbname "$PGDATABASE" -X --single-transaction --set ON_ERROR_STOP=1 \
   --file roles.sql \
+  --file restore-prelude.sql \
   --file schema.sql \
   --command 'SET session_replication_role = replica' \
   --file data.sql \
@@ -85,6 +87,7 @@ psql --dbname "$PGDATABASE" -X --single-transaction --set ON_ERROR_STOP=1 \
 
 恢复默认角色、扩展或受管 schema 时可能遇到版本/权限差异，按下方 Supabase 官方恢复文档处理；不要忽略 SQL 错误继续上线。
 若使用兼容性修复前生成的旧备份，`roles.sql` 可能仍含 `GRANT SET ON PARAMETER "log_min_messages" TO "supabase_realtime_admin";`；恢复前仅删除这一条平台管理的授权。
+旧备份若没有 `restore-prelude.sql`，请从本仓库 `scripts/restore-prelude.sql` 复制到解密目录，再按上述命令恢复。
 如果原来的 CLI 迁移历史也需要恢复，应另行导出 `supabase_migrations`；本方案附带迁移源文件，未宣称保存 CLI 内部历史。
 当前项目自定义 Auth 对象是上述触发器；未来增加其他 Auth/Storage 触发器或策略时，也需要扩展备份脚本。
 

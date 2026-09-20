@@ -64,6 +64,7 @@ for table in 'auth.users' 'auth.identities' 'public.user_states' 'public.sync_op
 done
 
 cp -R supabase/migrations "$work/plain/migrations"
+cp scripts/restore-prelude.sql "$work/plain/restore-prelude.sql"
 if [[ "${RESTORE_DRILL:-false}" == true ]]; then
   bash scripts/restore-backup-drill.sh "$work/plain"
 fi
@@ -71,7 +72,7 @@ printf 'MengDay logical database backup\nUTC: %s\nAutomation commit: %s\nSupabas
   "$(date -u +%FT%TZ)" "${GITHUB_SHA:-unknown}" "$(supabase --version)" > "$work/plain/manifest.txt"
 printf 'Restore environment Auth: %s\n' "${RESTORE_AUTH_VERSION:-v2.197.0}" >> "$work/plain/manifest.txt"
 printf 'Restore environment Storage: %s\n' "${RESTORE_STORAGE_VERSION:-v1.77.5}" >> "$work/plain/manifest.txt"
-(cd "$work/plain" && sha256sum roles.sql roles-original.sql schema.sql data.sql auth-triggers.sql migrations/*.sql > SHA256SUMS)
+(cd "$work/plain" && sha256sum roles.sql roles-original.sql restore-prelude.sql schema.sql data.sql auth-triggers.sql migrations/*.sql > SHA256SUMS)
 tar -czf "$work/backup.tar.gz" -C "$work/plain" .
 
 archive="mengday-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}.tar.gz.age"
