@@ -1,0 +1,40 @@
+name: Backup safety checks
+
+on:
+  push:
+    paths:
+      - '.github/workflows/*backup*.yml'
+      - 'scripts/*database-backup.sh'
+      - 'scripts/backup-database.sh'
+      - 'scripts/restore-backup-drill.sh'
+      - 'supabase/migrations/**'
+  pull_request:
+    paths:
+      - '.github/workflows/*backup*.yml'
+      - 'scripts/*database-backup.sh'
+      - 'scripts/backup-database.sh'
+      - 'scripts/restore-backup-drill.sh'
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install age
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age
+      - name: Check shell scripts
+        run: |
+          bash -n scripts/backup-database.sh scripts/test-database-backup.sh scripts/restore-backup-drill.sh
+          shellcheck scripts/backup-database.sh scripts/test-database-backup.sh scripts/restore-backup-drill.sh
+      - name: Exercise encrypted backups with isolated fixtures
+        run: bash scripts/test-database-backup.sh

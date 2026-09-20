@@ -1,0 +1,102 @@
+name: Daily encrypted database backup
+
+on:
+  schedule:
+    # 03:23 Asia/Shanghai, away from the busy top of the hour.
+    - cron: '23 19 * * *'
+  workflow_dispatch:
+    inputs:
+      restore_drill:
+        description: 'Also restore into a disposable Supabase instance and verify data/access controls'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    # The app source is public. Only the dedicated private repository runs this.
+    if: github.event.repository.private == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate configuration
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          test -n "$SUPABASE_DB_URL" || { echo '::error::Missing SUPABASE_DB_URL secret'; exit 1; }
+          test -n "$BACKUP_AGE_RECIPIENT" || { echo '::error::Missing BACKUP_AGE_RECIPIENT variable'; exit 1; }
+      - name: Install pinned Supabase CLI and backup tools
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/supabase/cli/releases/download/v2.117.0/supabase_2.117.0_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/supabase.tar.gz"
+          echo "69c05f85b9e47ee706d30f1a6ca8a526b4e337bfd12c7ef1ef522d24e7280d24  $RUNNER_TEMP/supabase.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/supabase.tar.gz" -C "$RUNNER_TEMP" supabase
+          sudo install -m 755 "$RUNNER_TEMP/supabase" /usr/local/bin/supabase
+          sudo apt-get update -qq
+          sudo apt-get install -y age postgresql-client
+      - name: Verify backup safety with isolated fixtures
+        run: bash scripts/test-database-backup.sh
+      - name: Export and encrypt database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+          RESTORE_DRILL: ${{ inputs.restore_drill || false }}
+        run: bash scripts/backup-database.sh
+      - name: Upload encrypted backup (30 days)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mengday-database-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mengday-encrypted/*
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Record result
+        run: echo 'Encrypted database backup uploaded. Retention 30 days. Decryption key is held offline.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload encrypted diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mengday-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mengday-diagnostics/*.age
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove encrypted runner files
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/mengday-encrypted" "$RUNNER_TEMP/mengday-diagnostics"
+
+  notify-failure:
+    needs: backup
+    if: always() && github.event.repository.private == true && needs.backup.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update a backup failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          title='Database backup needs attention'
+          issue=$(gh issue list --state open --json number,title --jq '.[] | select(.title == "Database backup needs attention") | .number' | head -n 1)
+          printf '@%s 每日数据库备份失败，请检查运行记录并重新运行。\n\n%s\n\n此通知不包含数据库内容或凭据。\n' "$OWNER" "$RUN_URL" > "$RUNNER_TEMP/backup-alert.md"
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body-file "$RUNNER_TEMP/backup-alert.md"
+          else
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/backup-alert.md" --assignee "$OWNER"
+          fi
