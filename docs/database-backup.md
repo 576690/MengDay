@@ -103,6 +103,10 @@ psql --dbname "$PGDATABASE" -X --single-transaction --set ON_ERROR_STOP=1 \
 
 ## 维护
 
+2026-09-20 已完成首次验收：[成功的备份与恢复演练](https://github.com/576690/MengDay-backups/actions/runs/35492188293)。
+真实备份已下载到本机、使用离线私钥解密，并通过所有文件校验；隔离 Supabase 环境中 SQL 恢复成功，四张核心表行数、RLS/表权限和账号触发器检查通过。
+这是数据库层验收，未替代切换生产前的应用登录与跨设备同步验收。
+
 私有备份仓库保存此工作流、备份脚本、本文档及 `supabase/migrations` 的副本。
 修改备份逻辑或应用数据库迁移后，需要将相关文件同步到私有仓库；它不会自动拉取公开仓库的任意改动。
 失败排查完成并手动备份成功后，关闭 `Database backup needs attention` Issue。
